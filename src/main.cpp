@@ -19,7 +19,7 @@ std::vector<Imath::half> generate_channel_data(const int width, const int height
 
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    std::uniform_real_distribution<float> dist(0.0f, 0.5f);
     std::normal_distribution<float> noise(0.0f, 0.15f);
 
 //    for (auto& pixel : data) {
@@ -60,8 +60,9 @@ void save_exr(const std::string& filename, const std::vector<Imath::half>& r, co
         std::transform(std::execution::par_unseq, indices.begin(), indices.end(), pixels.begin(),
             [&](int index) {
                 Imf::Rgba pixel;
-                pixel.r = r[index];
-                pixel.g = g[index];
+                const float ramp = static_cast<float>(index) / (width*height);
+                pixel.r = ramp + r[index];
+                pixel.g = (1.0f - ramp) + g[index];
                 pixel.b = b[index];
                 pixel.a = Imath::half(1.0f);  // Alpha channel (optional)
                 return pixel;
@@ -91,9 +92,10 @@ void load_exr(const std::string& filename) {
 }
 
 int main() {
-    const int width = 4096*4;
-    const int height = 4096*4;
-    const int threads = 10;
+    constexpr int mult = 8;
+    constexpr int width = 1024*mult;
+    constexpr int height = 1024*mult;
+    constexpr int threads = 10;
     // Generate random channel data
     std::cout << "=== Generating random data: " << width << "x" << height << " === "<< std::endl;
     std::vector<Imath::half> r = generate_channel_data(width, height);
