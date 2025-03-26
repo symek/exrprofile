@@ -9,46 +9,19 @@
 #include <random>
 #include <string>
 #include <execution>
+#include <filesystem>
 #include <thread>
 
+namespace exrprofile {
 
 
-// Generate random float data in the range [0, 1] with noise
-std::vector<Imath::half> generate_channel_data(const int width, const int height) {
-    std::vector<Imath::half> data(width * height);
+    void generate_and_save_exr(const std::string &filename, const int width, const int height, Imf::Compression compression,
+                               const int threads) {
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dist(0.0f, 0.5f);
-    std::normal_distribution<float> noise(0.0f, 0.15f);
-
-//    for (auto& pixel : data) {
-//        float value = std::clamp(dist(gen) + noise(gen), 0.0f, 1.0f);
-//        pixel = Imath::half(value);
-//    }
-
-    std::generate(std::execution::par, data.begin(), data.end(), [&]() {
-    const float value = std::clamp(dist(gen) + noise(gen), 0.0f, 1.0f);
-    return Imath::half(value);
-});
-
-    return data;
-}
-
-void save_exr(const std::string& filename, const std::vector<Imath::half>& r, const std::vector<Imath::half>& g,
-              const std::vector<Imath::half>& b, const int width, const int height, Imf::Compression compression,
-              const int threads) {
-    try {
-
-
-        Imf::RgbaOutputFile file(filename.c_str(),
-                                 width, height,
-                                 Imf::WRITE_RGBA,
-                                 1,
-                                 Imath::V2f {0,0}, 1,
-                                 Imf::LineOrder::INCREASING_Y,
-                                 compression,
-                                 threads);
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> dist(0.0f, 0.5f);
+        std::normal_distribution<float> noise(0.0f, 0.15f);
 
         std::vector<Imf::Rgba> pixels(width * height);
         std::vector<int> indices(width * height);
@@ -56,80 +29,146 @@ void save_exr(const std::string& filename, const std::vector<Imath::half>& r, co
         // Fill the indices with sequential numbers (0, 1, 2, ...)
         std::iota(indices.begin(), indices.end(), 0);
 
+
         // Use transform to fill pixel data based on the generated indices
         std::transform(std::execution::par_unseq, indices.begin(), indices.end(), pixels.begin(),
-            [&](int index) {
-                Imf::Rgba pixel;
-                const float ramp = static_cast<float>(index) / (width*height);
-                pixel.r = ramp + r[index];
-                pixel.g = (1.0f - ramp) + g[index];
-                pixel.b = b[index];
-                pixel.a = Imath::half(1.0f);  // Alpha channel (optional)
-                return pixel;
-            });
+                       [&](int index) {
+                           Imf::Rgba pixel;
+                           const float ramp = static_cast<float>(index) / (width * height);
+                           const float r = std::clamp(dist(gen) + noise(gen), 0.0f, 1.0f);
+                           const float g = std::clamp(dist(gen) + noise(gen), 0.0f, 1.0f);
+                           const float b = std::clamp(dist(gen) + noise(gen), 0.0f, 1.0f);
+                           pixel.r = Imath::half(ramp + r);
+                           pixel.g = Imath::half((1.0f - ramp) + g);
+                           pixel.b = Imath::half(b);
+                           pixel.a = Imath::half(1.0f);  // Alpha channel (optional)
+                           return pixel;
+                       });
+
+        try {
+
+            Imf::RgbaOutputFile file(filename.c_str(),
+                                     width, height,
+                                     Imf::WRITE_RGBA,
+                                     1,
+                                     Imath::V2f{0, 0}, 1,
+                                     Imf::LineOrder::INCREASING_Y,
+                                     compression,
+                                     threads);
 
 
-        file.setFrameBuffer(pixels.data(), 1, width);
-        file.writePixels(height);
-    } catch (const std::exception& e) {
-        std::cerr << "Error saving EXR file: " << e.what() << std::endl;
+            file.setFrameBuffer(pixels.data(), 1, width);
+            file.writePixels(height);
+        } catch (const std::exception &e) {
+            std::cerr << "Error saving EXR file: " << e.what() << std::endl;
+        }
+    }
+
+    void load_exr(const std::string &filename) {
+        try {
+            Imf::RgbaInputFile file(filename.c_str());
+            Imath::Box2i dw = file.dataWindow();
+            int width = dw.max.x - dw.min.x + 1;
+            int height = dw.max.y - dw.min.y + 1;
+
+            std::vector<Imf::Rgba> pixels(width * height);
+            file.setFrameBuffer(pixels.data(), 1, width);
+            file.readPixels(dw.min.y, dw.max.y);
+        } catch (const std::exception &e) {
+            std::cerr << "Error loading EXR file: " << e.what() << std::endl;
+        }
     }
 }
-
-void load_exr(const std::string& filename) {
-    try {
-        Imf::RgbaInputFile file(filename.c_str());
-        Imath::Box2i dw = file.dataWindow();
-        int width = dw.max.x - dw.min.x + 1;
-        int height = dw.max.y - dw.min.y + 1;
-
-        std::vector<Imf::Rgba> pixels(width * height);
-        file.setFrameBuffer(pixels.data(), 1, width);
-        file.readPixels(dw.min.y, dw.max.y);
-    } catch (const std::exception& e) {
-        std::cerr << "Error loading EXR file: " << e.what() << std::endl;
-    }
-}
-
 int main() {
     constexpr int mult = 8;
     constexpr int width = 1024*mult;
     constexpr int height = 1024*mult;
-    constexpr int threads = 10;
+    constexpr int threads = 1;
     // Generate random channel data
     std::cout << "=== Generating random data: " << width << "x" << height << " === "<< std::endl;
-    std::vector<Imath::half> r = generate_channel_data(width, height);
-    std::vector<Imath::half> g = generate_channel_data(width, height);
-    std::vector<Imath::half> b = generate_channel_data(width, height);
 
-#if OPENEXR_VERSION_MINOR == 3
-    const auto compression_list = std::array<int, 10>{0,1,2,3,4,5,6,7,8,9};
-#elif OPENEXR_VERSION_MINOR == 4
-    const auto compression_list = std::array<int, 11>{0,1,2,3,4,5,6,7,8,9,10};
-#endif
+    auto compression_list = std::vector<int>(Imf::Compression::NUM_COMPRESSION_METHODS);
+    std::iota(compression_list.begin(), compression_list.end(), 0);
+    auto compression_name = std::string{};
 
-    auto compression_name       = std::string{};
+    using stats =  std::array<long, 3>;
+    auto results = std::map<std::string, stats>{};
+
     std::cout << "=== Profiling compressions" << " ===" << std::endl;
     for (const auto compression: compression_list) {
         getCompressionNameFromId(static_cast<Imf::Compression>(compression), compression_name);
         const auto filename = std::string{"test_"} + compression_name + std::string{".exr"};
+
         // Measure compression time
-        auto start_compress = std::chrono::high_resolution_clock::now();
-        save_exr(filename, r, g, b, width, height, (Imf::Compression) compression, threads);
-        auto end_compress = std::chrono::high_resolution_clock::now();
-        auto compression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        const auto start_compress = std::chrono::high_resolution_clock::now();
+        exrprofile::generate_and_save_exr(filename, width, height, (Imf::Compression) compression, threads);
+        const auto end_compress = std::chrono::high_resolution_clock::now();
+        const auto compression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                 end_compress - start_compress).count();
-//        std::cout << std::format("{:>25} {:<30}: {:.6f} seconds\n", comp, action, time); no c++20 format in gcc 11.5 :(
-        std::cout  << compression_name << " compression time : " << compression_time << " ms" << std::endl;
+        // std::cout << std::format("{:>25} {:<30}: {:.6f} seconds\n", comp, action, time); no c++20 format in gcc 11.5 :(
+        auto compression_description = std::string{};
+        getCompressionDescriptionFromId(static_cast<Imf::Compression>(compression), compression_description);
+        std::uintmax_t filesize = std::filesystem::file_size(filename);
+        std::cout << "=== " << compression_description << " === " << std::endl;
+        std::cout << "  compression: " << compression_time << " ms" << std::endl;
+
 
         // Measure decompression time
-        auto start_decompress = std::chrono::high_resolution_clock::now();
-        load_exr(filename);
-        auto end_decompress = std::chrono::high_resolution_clock::now();
-        auto decompression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        const auto start_decompress = std::chrono::high_resolution_clock::now();
+        exrprofile::load_exr(filename);
+        const auto end_decompress = std::chrono::high_resolution_clock::now();
+        const auto decompression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                 end_decompress - start_decompress).count();
-        std::cout << compression_name << " decompression time: " << decompression_time << " ms" << std::endl;
+        std::cout << "decompression: " << decompression_time << " ms" << std::endl;
+
+
+        results[compression_name] = {compression_time, decompression_time, (long) filesize};
+
     }
+
+    // Convert map to vector of pairs for sorting
+    std::vector<std::pair<std::string, stats>> sorted_results(results.begin(), results.end());
+
+
+    std::cout << "Sorted by Compression Time:\n";
+    std::sort(sorted_results.begin(), sorted_results.end(),
+              [](const auto &a, const auto &b) { return a.second[0] < b.second[0]; });
+
+
+    for (const auto &[name, stat]: sorted_results) {
+        std::cout << std::setw(25) << std::right << name
+                  << ": " << std::setw(4) << stat[0] << " ms"
+                  << std::fixed << std::setprecision(2)
+                  << " -> size: " << stat[2] / (1024 * 1024) << " MB"
+                  << std::endl;
+    }
+
+    std::cout << "\nSorted by Decompression Time:\n";
+    std::sort(sorted_results.begin(), sorted_results.end(),
+              [](const auto &a, const auto &b) { return a.second[1] < b.second[1]; });
+
+
+    for (const auto &[name, stat]: sorted_results) {
+        std::cout << std::setw(25) << std::right << name
+                  << ": " << std::setw(4) << stat[1]
+                  << " ms" << std::fixed << std::setprecision(2)
+                  << " -> " << stat[2] / (1024 * 1024) << " MB"
+                  << std::endl;
+    }
+
+    std::cout << "\nSorted by File Size:\n";
+    std::sort(sorted_results.begin(), sorted_results.end(),
+              [](const auto &a, const auto &b) { return a.second[2] < b.second[2]; });
+
+
+    for (const auto &[name, stat]: sorted_results) {
+        std::cout << std::setw(25) << std::right << name
+                  << std::fixed << std::setprecision(2)
+                  << ": " << stat[2] / (1024 * 1024) << " MB"
+                  << " -> " << std::setw(4) << stat[1] << " ms"
+                  << std::endl;
+    }
+
 
     return 0;
 }
