@@ -85,9 +85,9 @@ namespace exrprofile {
 void delete_test_file(const std::string &filename) {
     try {
         if (std::filesystem::remove(filename)) {
-            fmt::print("File: {} deleted successfully.\n", filename);
+            fmt::print("=== file: {} deleted successfully.\n", filename);
         } else {
-            fmt::print("File: {} not found or already deleted.\n", filename);
+            fmt::print("=== file: {} not found or already deleted.\n", filename);
         }
     } catch (const std::filesystem::filesystem_error &e) {
         std::cerr << "Error deleting file: " << e.what() << std::endl;
@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
 
         const std::uintmax_t filesize = std::filesystem::file_size(filename);
         fmt::print("=== {} ==\n", compression_description);
-        fmt::print("{:>10} {:>13}: {:.6f} seconds\n", compression_name, "compression", (double)compression_time / 1024);
+        fmt::print("{:>15}: {:.6f} seconds\n", "compression", (double)compression_time / 1024);
 
 
         // Measure decompression time
@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
         const auto end_decompress = std::chrono::high_resolution_clock::now();
         const auto decompression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                 end_decompress - start_decompress).count();
-        fmt::print("{:>10} {:>13}: {:.6f} seconds\n", compression_name, "decompression", (double)decompression_time / 1024);
+        fmt::print("{:>15}: {:.6f} seconds\n", "decompression", (double)decompression_time / 1024);
 
 
         // Store stats
@@ -169,44 +169,35 @@ int main(int argc, char** argv) {
     std::vector<std::pair<std::string, stats>> sorted_results(results.begin(), results.end());
 
 
-    std::cout << "Sorted by Compression Time:\n";
-    std::sort(sorted_results.begin(), sorted_results.end(),
-              [](const auto &a, const auto &b) { return a.second[0] < b.second[0]; });
-
-
-    for (const auto &[name, stat]: sorted_results) {
-        std::cout << std::setw(25) << std::right << name
-                  << ": " << std::setw(4) << stat[0] << " ms"
-                  << std::fixed << std::setprecision(2)
-                  << " -> size: " << stat[2] / (1024 * 1024) << " MB"
-                  << std::endl;
+    {
+        std::cout << "\nSorted by Compression Time:\n";
+        std::sort(sorted_results.begin(), sorted_results.end(),
+                  [](const auto &a, const auto &b) { return a.second[0] < b.second[0]; });
+        for (const auto &[name, stat]: sorted_results) {
+            fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[0], (double) stat[2] / (1024 * 1024));
+        }
     }
 
-    std::cout << "\nSorted by Decompression Time:\n";
-    std::sort(sorted_results.begin(), sorted_results.end(),
-              [](const auto &a, const auto &b) { return a.second[1] < b.second[1]; });
 
-
-    for (const auto &[name, stat]: sorted_results) {
-        std::cout << std::setw(25) << std::right << name
-                  << ": " << std::setw(4) << stat[1]
-                  << " ms" << std::fixed << std::setprecision(2)
-                  << " -> " << stat[2] / (1024 * 1024) << " MB"
-                  << std::endl;
+    {
+        std::cout << "\nSorted by Decompression Time:\n";
+        std::sort(sorted_results.begin(), sorted_results.end(),
+                  [](const auto &a, const auto &b) { return a.second[1] < b.second[1]; });
+        for (const auto &[name, stat]: sorted_results) {
+            fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[1], (double) stat[2] / (1024 * 1024));
+        }
     }
 
-    std::cout << "\nSorted by File Size:\n";
-    std::sort(sorted_results.begin(), sorted_results.end(),
-              [](const auto &a, const auto &b) { return a.second[2] < b.second[2]; });
 
-
-    for (const auto &[name, stat]: sorted_results) {
-        std::cout << std::setw(25) << std::right << name
-                  << std::fixed << std::setprecision(2)
-                  << ": " << stat[2] / (1024 * 1024) << " MB"
-                  << " -> " << std::setw(4) << stat[1] << " ms"
-                  << std::endl;
+    {
+        std::cout << "\nSorted by File Size:\n";
+        std::sort(sorted_results.begin(), sorted_results.end(),
+                  [](const auto &a, const auto &b) { return a.second[2] < b.second[2]; });
+        for (const auto &[name, stat]: sorted_results) {
+            fmt::print("{:>25}: {:.2f}MB -> {} ms \n", name, (double) stat[2] / (1024 * 1024), stat[1]);
+        }
     }
+
 
     return 0;
 }
