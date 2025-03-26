@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <thread>
 #include <CLI/CLI.hpp>
+#include <fmt/core.h>
 
 namespace exrprofile {
 
@@ -84,9 +85,9 @@ namespace exrprofile {
 void delete_test_file(const std::string &filename) {
     try {
         if (std::filesystem::remove(filename)) {
-            std::cout << "File '" << filename << "' deleted successfully." << std::endl;
+            fmt::print("File: {} deleted successfully.\n", filename);
         } else {
-            std::cerr << "File '" << filename << "' not found or already deleted." << std::endl;
+            fmt::print("File: {} not found or already deleted.\n", filename);
         }
     } catch (const std::filesystem::filesystem_error &e) {
         std::cerr << "Error deleting file: " << e.what() << std::endl;
@@ -141,9 +142,9 @@ int main(int argc, char** argv) {
         const auto compression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                 end_compress - start_compress).count();
 
-        // std::cout << std::format("{:>25} {:<30}: {:.6f} seconds\n", comp, action, time); no c++20 format in gcc 11.5 :(
-        std::cout << "=== " << compression_description << " === " << std::endl;
-        std::cout << "  compression: " << compression_time << " ms" << std::endl;
+        const std::uintmax_t filesize = std::filesystem::file_size(filename);
+        fmt::print("=== {} ==\n", compression_description);
+        fmt::print("{:>10} {:>13}: {:.6f} seconds\n", compression_name, "compression", (double)compression_time / 1024);
 
 
         // Measure decompression time
@@ -152,10 +153,10 @@ int main(int argc, char** argv) {
         const auto end_decompress = std::chrono::high_resolution_clock::now();
         const auto decompression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                 end_decompress - start_decompress).count();
-        std::cout << "decompression: " << decompression_time << " ms" << std::endl;
+        fmt::print("{:>10} {:>13}: {:.6f} seconds\n", compression_name, "decompression", (double)decompression_time / 1024);
+
 
         // Store stats
-        const std::uintmax_t filesize = std::filesystem::file_size(filename);
         results[compression_name] = {compression_time, decompression_time, (long) filesize};
 
         // Optionally cleanup our mess

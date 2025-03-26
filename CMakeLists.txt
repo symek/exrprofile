@@ -15,6 +15,15 @@ FetchContent_Declare(
 # Make CLI11 available
 FetchContent_MakeAvailable(CLI11)
 
+# Lets add fmt to the mix (we are on gcc-11.5 without <format>)
+FetchContent_Declare(
+    fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG 10.1.1  # Latest stable release
+)
+
+FetchContent_MakeAvailable(fmt)
+
 # Find OpenEXR and Imath
 find_package(OpenEXR REQUIRED)
 find_package(Imath REQUIRED)
@@ -27,7 +36,7 @@ add_executable(exrprofile src/main.cpp)
 
 # Links
 target_link_libraries(exrprofile PRIVATE OpenEXR::OpenEXR Imath::Imath)
-target_link_libraries(exrprofile PRIVATE CLI11::CLI11)
+target_link_libraries(exrprofile PRIVATE CLI11::CLI11 fmt::fmt)
 
 # compiler flags
 target_compile_options(exrprofile PRIVATE
