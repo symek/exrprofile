@@ -11,6 +11,7 @@
 #include <execution>
 #include <filesystem>
 #include <thread>
+#include <CLI/CLI.hpp>
 
 namespace exrprofile {
 
@@ -79,13 +80,45 @@ namespace exrprofile {
         }
     }
 }
-int main() {
-    constexpr int mult = 8;
-    constexpr int width = 1024*mult;
-    constexpr int height = 1024*mult;
-    constexpr int threads = 1;
+
+void delete_test_file(const std::string &filename) {
+    try {
+        if (std::filesystem::remove(filename)) {
+            std::cout << "File '" << filename << "' deleted successfully." << std::endl;
+        } else {
+            std::cerr << "File '" << filename << "' not found or already deleted." << std::endl;
+        }
+    } catch (const std::filesystem::filesystem_error &e) {
+        std::cerr << "Error deleting file: " << e.what() << std::endl;
+    }
+}
+
+
+
+int main(int argc, char** argv) {
+    CLI::App app{"EXR Profiler"};
+
+    int scale = 1;
+    int threads = 1;
+    bool cleanup = false;
+    auto prefix = std::string{"./test_"};
+
+    app.add_option("-f,--file", prefix, "Prefix to the EXR files (default ./test_ )");
+    app.add_option("-t,--threads", threads, "Number of threads (default 1)");
+    app.add_option("-s,--scale", scale, "Multiply of 1Kx1K test size (default 1)");
+    app.add_flag("-c,--clean", cleanup, "Cleanup the files");
+
+    try {
+        app.parse(argc, argv);
+    } catch (const CLI::ParseError &e) {
+        return app.exit(e);
+    }
+
+    const int width  = std::clamp(scale, 1, 32) * 1024;
+    const int height = width;
+
     // Generate random channel data
-    std::cout << "=== Generating random data: " << width << "x" << height << " === "<< std::endl;
+    std::cout << "=== Generating random data: " << width << "x" << height <<  ", threads " << threads << " === " << std::endl;
 
     auto compression_list = std::vector<int>(Imf::Compression::NUM_COMPRESSION_METHODS);
     std::iota(compression_list.begin(), compression_list.end(), 0);
@@ -97,7 +130,9 @@ int main() {
     std::cout << "=== Profiling compressions" << " ===" << std::endl;
     for (const auto compression: compression_list) {
         getCompressionNameFromId(static_cast<Imf::Compression>(compression), compression_name);
-        const auto filename = std::string{"test_"} + compression_name + std::string{".exr"};
+        const auto filename = prefix + compression_name + std::string{".exr"};
+        auto compression_description = std::string{};
+        getCompressionDescriptionFromId(static_cast<Imf::Compression>(compression), compression_description);
 
         // Measure compression time
         const auto start_compress = std::chrono::high_resolution_clock::now();
@@ -105,10 +140,8 @@ int main() {
         const auto end_compress = std::chrono::high_resolution_clock::now();
         const auto compression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                 end_compress - start_compress).count();
+
         // std::cout << std::format("{:>25} {:<30}: {:.6f} seconds\n", comp, action, time); no c++20 format in gcc 11.5 :(
-        auto compression_description = std::string{};
-        getCompressionDescriptionFromId(static_cast<Imf::Compression>(compression), compression_description);
-        std::uintmax_t filesize = std::filesystem::file_size(filename);
         std::cout << "=== " << compression_description << " === " << std::endl;
         std::cout << "  compression: " << compression_time << " ms" << std::endl;
 
@@ -121,8 +154,13 @@ int main() {
                 end_decompress - start_decompress).count();
         std::cout << "decompression: " << decompression_time << " ms" << std::endl;
 
-
+        // Store stats
+        const std::uintmax_t filesize = std::filesystem::file_size(filename);
         results[compression_name] = {compression_time, decompression_time, (long) filesize};
+
+        // Optionally cleanup our mess
+        if (cleanup)
+            delete_test_file(filename);
 
     }
 
@@ -169,6 +207,6 @@ int main() {
                   << std::endl;
     }
 
-
     return 0;
 }
+
