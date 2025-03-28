@@ -32,7 +32,10 @@ find_package(Imath REQUIRED)
 find_package(Threads REQUIRED)
 
 # code
-add_executable(exrprofile src/main.cpp)
+add_executable(exrprofile
+        src/main.cpp
+        src/mtread.cpp
+        src/mtread.h)
 
 # Links
 target_link_libraries(exrprofile PRIVATE OpenEXR::OpenEXR Imath::Imath)
@@ -45,8 +48,8 @@ target_compile_options(exrprofile PRIVATE
     $<$<CONFIG:Debug>:-Wall -Wextra -O0 -g>
 )
 
-add_executable(mtread src/mtread.cpp)
+#add_executable(mtread src/mtread.cpp)
 # Links
-target_link_libraries(mtread PRIVATE OpenEXR::OpenEXR Imath::Imath)
-target_link_libraries(mtread PRIVATE CLI11::CLI11 fmt::fmt)
-target_link_libraries(mtread PRIVATE Threads::Threads)
+#target_link_libraries(mtread PRIVATE OpenEXR::OpenEXR Imath::Imath)
+#target_link_libraries(mtread PRIVATE CLI11::CLI11 fmt::fmt)
+#target_link_libraries(mtread PRIVATE Threads::Threads)
