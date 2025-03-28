@@ -37,9 +37,16 @@ add_executable(exrprofile src/main.cpp)
 # Links
 target_link_libraries(exrprofile PRIVATE OpenEXR::OpenEXR Imath::Imath)
 target_link_libraries(exrprofile PRIVATE CLI11::CLI11 fmt::fmt)
+target_link_libraries(exrprofile PRIVATE Threads::Threads)
 
 # compiler flags
 target_compile_options(exrprofile PRIVATE
     $<$<CONFIG:Release>:-Wall -Wextra -O3 -march=native>
     $<$<CONFIG:Debug>:-Wall -Wextra -O0 -g>
 )
+
+add_executable(mtread src/mtread.cpp)
+# Links
+target_link_libraries(mtread PRIVATE OpenEXR::OpenEXR Imath::Imath)
+target_link_libraries(mtread PRIVATE CLI11::CLI11 fmt::fmt)
+target_link_libraries(mtread PRIVATE Threads::Threads)
