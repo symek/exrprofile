@@ -181,8 +181,7 @@ int main(int argc, char **argv) {
         const int height = width;
 
         // Generate random channel data
-        std::cout << "=== Generating random data: " << width << "x" << height << ", threads " << threads << " === "
-                  << std::endl;
+        fmt::print("=== Generating random data: {}x{} with {} ===\n", width , height, threads);
 
         auto compression_list = std::vector<int>(Imf::Compression::NUM_COMPRESSION_METHODS);
         std::iota(compression_list.begin(), compression_list.end(), 0);
@@ -190,8 +189,10 @@ int main(int argc, char **argv) {
 
 
         auto results = exrprofile::Results{};
-
+        const auto start_gen = clock::now();
         const std::vector<Imf::Rgba> pixels = exrprofile::generate_synthetic_pixels(width, height);
+        const auto end_gen = timeit(start_gen);
+        fmt::print("{:>15}: {:.6f} seconds\n", "making pixels", (double)end_gen/1024);
 
         std::cout << "=== Profiling compressions" << " ===" << std::endl;
         for (const auto compression: compression_list) {
