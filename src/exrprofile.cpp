@@ -95,6 +95,7 @@ int main(int argc, char **argv) {
 
     int scale = 1;
     int threads = 1;
+    int workers = 1;
     bool cleanup = false;
     auto prefix = std::string{"./test_"};
     bool mt_read = false;
@@ -102,7 +103,8 @@ int main(int argc, char **argv) {
 
 
     app.add_option("-p,--prefix", prefix, "Prefix to the EXR files (default ./test_ )");
-    app.add_option("-t,--threads", threads, "Number of threads (default 1)");
+    app.add_option("-t,--threads", threads, "Number of threads per frame (default 1)");
+    app.add_option("-w,--workers", workers, "Number of thread workers (x threads) (default 1)");
     app.add_option("-s,--scale", scale, "Multiply of 1Kx1K test size (default 1)");
     app.add_flag("-c,--clean", cleanup, "Cleanup the files");
     app.add_flag("-r,--read", mt_read, "Profile multi-thread reading");
@@ -115,16 +117,42 @@ int main(int argc, char **argv) {
     }
 
 
-
     if (mt_read) {
-        fmt::print("=== Profiling read from a file with {} threads \n", threads);
+        fmt::print("=== Profiling read from a file with {} threads per frame, and {} worker frames \n", threads, workers);
         auto results = exrprofile::Results{};
+        std::vector<std::thread> frame_threads;
 
-        for (const auto &filename: files) {
-            const auto result = exrprofile::multithreaded_read(filename, threads);
-            const std::uintmax_t filesize = std::filesystem::file_size(filename);
-            results[filename] = {0, result, (long)filesize};
+         for (const auto &filename: files) {
+             const std::uintmax_t filesize = std::filesystem::file_size(filename);
+             results[filename] = {0, 0, (long)filesize};
         }
+
+        std::atomic<size_t> frame_index{0};
+        auto frame_worker = [&, threads]() {
+            while (true) {
+                using namespace exrprofile;
+                const size_t frame = frame_index.fetch_add(1);
+                if (frame >= files.size()) break;
+                const auto & filename = files[frame];
+                const auto result = multithreaded_read(filename, threads);
+                results[filename][Records::decompression] = result;
+            }
+        };
+
+        const auto start_reading = std::chrono::high_resolution_clock::now();
+        for (int i = 0; i < workers; ++i) {
+            frame_threads.emplace_back(frame_worker);
+        }
+
+        for (auto &t: frame_threads) {
+            t.join();
+        }
+        const auto end_reading = std::chrono::high_resolution_clock::now();
+           const auto read_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    end_reading - start_reading).count();
+
+           fmt::print("Total time: {:.6f} seconds (avg. {} ms per frame)", (double)read_time / 1024, read_time / files.size());
+
         {
             std::vector<std::pair<std::string, exrprofile::Stats>> sorted_results(results.begin(), results.end());
             using namespace exrprofile;

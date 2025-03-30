@@ -47,20 +47,21 @@ namespace exrprofile {
             std::vector<std::thread> threads;
             std::atomic<int> completed(0);
 
+            const auto start_decompress = std::chrono::high_resolution_clock::now();
             // Launch threads to read different regions of the image
+
             for (int i = 0; i < num_threads; ++i) {
                 int y_start = dw.min.y + i * chunk_size;
                 int y_end = (i == num_threads - 1) ? dw.max.y : y_start + chunk_size - 1;
-                threads.emplace_back(read_region, std::ref(filename), y_start, y_end, width, std::ref(completed));
+                threads.emplace_back([&, y_start, y_end]() {
+                    read_region(std::ref(filename), y_start, y_end, width, std::ref(completed));
+                });
             }
-
-            const auto start_decompress = std::chrono::high_resolution_clock::now();
-
-            // Join threads
-            for (auto &t: threads) {
-                t.join();
+            for (auto & thread: threads) {
+                thread.join();
             }
             const auto end_decompress = std::chrono::high_resolution_clock::now();
+
             const auto decompression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                     end_decompress - start_decompress).count();
             fmt::print("{:>15}: {:.6f} seconds\n", "decompression", (double) decompression_time / 1024);
