@@ -1,29 +1,9 @@
-#include <OpenEXR/ImfRgbaFile.h>
-#include <OpenEXR/ImfHeader.h>
-#include <OpenEXR/ImfCompression.h>
-#include <OpenEXR/OpenEXRConfig.h>
-#include <Imath/half.h>
-#include <iostream>
-#include <vector>
-#include <chrono>
-#include <random>
-#include <string>
-#include <execution>
-#include <filesystem>
-#include <thread>
-#include <CLI/CLI.hpp>
-#include <fmt/core.h>
 
+#include <CLI/CLI.hpp>
+#include "exrprofile.h"
 #include "mtread.h"
 
 namespace exrprofile {
-
-    using Stats = std::array<long, 3>;
-    enum Records {
-        compression   = 0,
-        decompression = 1,
-        filesize      = 2
-    };
 
 
     std::vector<Imf::Rgba> generate_synthetic_pixels(const int width, const int height) {
@@ -134,13 +114,30 @@ int main(int argc, char **argv) {
         return app.exit(e);
     }
 
+
+
     if (mt_read) {
         fmt::print("=== Profiling read from a file with {} threads \n", threads);
+        auto results = exrprofile::Results{};
 
         for (const auto &filename: files) {
-            exrprofile::multithreaded_read(filename, threads);
+            const auto result = exrprofile::multithreaded_read(filename, threads);
+            const std::uintmax_t filesize = std::filesystem::file_size(filename);
+            results[filename] = {0, result, (long)filesize};
         }
-        return 0;
+        {
+            std::vector<std::pair<std::string, exrprofile::Stats>> sorted_results(results.begin(), results.end());
+            using namespace exrprofile;
+            std::cout << "\nSorted by Reading Time:\n";
+            std::sort(sorted_results.begin(), sorted_results.end(),
+                      [](const auto &a, const auto &b) { return a.second[Records::decompression] < b.second[Records::decompression]; });
+            for (const auto &[name, stat]: sorted_results) {
+                fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[Records::decompression],
+                           (double) stat[Records::filesize] / (1024 * 1024));
+            }
+        }
+
+        return 0; // NOTE: We quit here
     }
 
 
@@ -156,7 +153,7 @@ int main(int argc, char **argv) {
         auto compression_name = std::string{};
 
 
-        auto results = std::map<std::string, exrprofile::Stats>{};
+        auto results = exrprofile::Results{};
 
         const std::vector<Imf::Rgba> pixels = exrprofile::generate_synthetic_pixels(width, height);
 
@@ -208,7 +205,8 @@ int main(int argc, char **argv) {
             std::sort(sorted_results.begin(), sorted_results.end(),
                       [](const auto &a, const auto &b) { return a.second[Records::compression] < b.second[Records::compression]; });
             for (const auto &[name, stat]: sorted_results) {
-                fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[0], (double) stat[2] / (1024 * 1024));
+                fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[Records::compression],
+                           (double) stat[Records::filesize] / (1024 * 1024));
             }
         }
 
@@ -219,7 +217,8 @@ int main(int argc, char **argv) {
             std::sort(sorted_results.begin(), sorted_results.end(),
                       [](const auto &a, const auto &b) { return a.second[Records::decompression] < b.second[Records::decompression]; });
             for (const auto &[name, stat]: sorted_results) {
-                fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[1], (double) stat[2] / (1024 * 1024));
+                fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[Records::decompression],
+                           (double) stat[Records::filesize] / (1024 * 1024));
             }
         }
 
@@ -230,7 +229,8 @@ int main(int argc, char **argv) {
             std::sort(sorted_results.begin(), sorted_results.end(),
                       [](const auto &a, const auto &b) { return a.second[Records::filesize] < b.second[Records::filesize]; });
             for (const auto &[name, stat]: sorted_results) {
-                fmt::print("{:>25}: {:.2f}MB -> {} ms \n", name, (double) stat[2] / (1024 * 1024), stat[1]);
+                fmt::print("{:>25}: {:.2f}MB -> {} ms \n", name, (double)
+                stat[Records::filesize] / (1024 * 1024), stat[Records::decompression]);
             }
         }
 

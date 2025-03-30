@@ -1,6 +1,7 @@
 //
 // Created by symek on 3/27/25.
 //
+#include "exrprofile.h"
 #include "mtread.h"
 
 namespace exrprofile {
@@ -50,7 +51,7 @@ namespace exrprofile {
             for (int i = 0; i < num_threads; ++i) {
                 int y_start = dw.min.y + i * chunk_size;
                 int y_end = (i == num_threads - 1) ? dw.max.y : y_start + chunk_size - 1;
-                threads.emplace_back(read_region, filename, y_start, y_end, width, std::ref(completed));
+                threads.emplace_back(read_region, std::ref(filename), y_start, y_end, width, std::ref(completed));
             }
 
             const auto start_decompress = std::chrono::high_resolution_clock::now();
