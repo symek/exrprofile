@@ -102,6 +102,12 @@ int main(int argc, char **argv) {
     bool mt_read = false;
     std::vector<std::string> files;
 
+    // Basic timing tools
+    using clock = std::chrono::high_resolution_clock;
+    auto timeit = [](auto &&start) {
+        const auto end = clock::now();
+        return std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    };
 
     app.add_option("-p,--prefix", prefix, "Prefix to the EXR files (default ./test_ )");
     app.add_option("-t,--threads", threads, "Number of threads per frame (default 1)");
@@ -141,7 +147,8 @@ int main(int argc, char **argv) {
             }
         };
 
-        const auto start_reading = std::chrono::high_resolution_clock::now();
+
+        const auto start_reading = clock::now();
         for (int i = 0; i < workers; ++i) {
             frame_threads.emplace_back(frame_worker);
         }
@@ -149,9 +156,8 @@ int main(int argc, char **argv) {
         for (auto &t: frame_threads) {
             t.join();
         }
-        const auto end_reading = std::chrono::high_resolution_clock::now();
-           const auto read_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    end_reading - start_reading).count();
+
+        const auto read_time = timeit(start_reading);
 
            fmt::print("Total time: {:.6f} seconds (avg. {} ms per frame)", (double)read_time / 1024, read_time / files.size());
 
@@ -189,32 +195,26 @@ int main(int argc, char **argv) {
 
         std::cout << "=== Profiling compressions" << " ===" << std::endl;
         for (const auto compression: compression_list) {
+
             getCompressionNameFromId(static_cast<Imf::Compression>(compression), compression_name);
             const auto filename = prefix + compression_name + std::string{".exr"};
             auto compression_description = std::string{};
             getCompressionDescriptionFromId(static_cast<Imf::Compression>(compression), compression_description);
 
             // Measure compression time
-            const auto start_compress = std::chrono::high_resolution_clock::now();
-            exrprofile::save_exr_file(pixels, filename, width, height, static_cast<Imf::Compression>(compression),
-                                      threads);
-            const auto end_compress = std::chrono::high_resolution_clock::now();
-            const auto compression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    end_compress - start_compress).count();
+            const auto start_compress = clock::now();
+            exrprofile::save_exr_file(pixels, filename, width, height, static_cast<Imf::Compression>(compression), threads);
+            const auto compression_time = timeit(start_compress);
 
             const std::uintmax_t filesize = std::filesystem::file_size(filename);
-            fmt::print("=== {} ==\n", compression_description);
+            fmt::print("{} -> {}\n", filename,compression_description );
             fmt::print("{:>15}: {:.6f} seconds\n", "compression", (double) compression_time / 1024);
 
-
             // Measure decompression time
-            const auto start_decompress = std::chrono::high_resolution_clock::now();
+            const auto start_decompress =clock::now();
             exrprofile::load_exr_file(filename);
-            const auto end_decompress = std::chrono::high_resolution_clock::now();
-            const auto decompression_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    end_decompress - start_decompress).count();
+            const auto decompression_time = timeit(start_decompress);
             fmt::print("{:>15}: {:.6f} seconds\n", "decompression", (double) decompression_time / 1024);
-
 
             // Store stats
             results[compression_name] = {compression_time, decompression_time, (long) filesize};
