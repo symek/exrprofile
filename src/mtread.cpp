@@ -4,6 +4,7 @@
 #include "exrprofile.h"
 #include "mtread.h"
 
+
 namespace exrprofile {
 
     void read_region(const std::string &filename, int y_start, int y_end, int width, std::atomic<int> &completed) {
@@ -28,7 +29,7 @@ namespace exrprofile {
         }
     }
 
-    long multithreaded_read(const std::string & filename, const int num_threads) {
+    long multithreaded_read(const std::string & filename, const int num_threads, ThreadPool & pool) {
 
 
         // Set global thread count for OpenEXR
@@ -53,9 +54,12 @@ namespace exrprofile {
             for (int i = 0; i < num_threads; ++i) {
                 int y_start = dw.min.y + i * chunk_size;
                 int y_end = (i == num_threads - 1) ? dw.max.y : y_start + chunk_size - 1;
+//                pool.enqueue() this should be here, but needs work.
                 threads.emplace_back([&, y_start, y_end]() {
                     read_region(std::ref(filename), y_start, y_end, width, std::ref(completed));
                 });
+
+
             }
             for (auto & thread: threads) {
                 thread.join();

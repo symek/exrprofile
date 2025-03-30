@@ -37,7 +37,7 @@ add_executable(exrprofile
         src/exrprofile.h
         src/mtread.cpp
         src/mtread.h
-        )
+        src/threadpool.h)
 
 # Links
 target_link_libraries(exrprofile PRIVATE OpenEXR::OpenEXR Imath::Imath)

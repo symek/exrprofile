@@ -2,6 +2,7 @@
 #include <CLI/CLI.hpp>
 #include "exrprofile.h"
 #include "mtread.h"
+#include "threadpool.h"
 
 namespace exrprofile {
 
@@ -129,12 +130,13 @@ int main(int argc, char **argv) {
 
         std::atomic<size_t> frame_index{0};
         auto frame_worker = [&, threads]() {
+            exrprofile::ThreadPool pool(threads);
             while (true) {
                 using namespace exrprofile;
                 const size_t frame = frame_index.fetch_add(1);
                 if (frame >= files.size()) break;
                 const auto & filename = files[frame];
-                const auto result = multithreaded_read(filename, threads);
+                const auto result = multithreaded_read(filename, threads, pool);
                 results[filename][Records::decompression] = result;
             }
         };

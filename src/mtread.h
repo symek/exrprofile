@@ -15,10 +15,11 @@
 #include <atomic>
 #include <chrono>
 #include <fmt/core.h>
+#include "threadpool.h"
 
 namespace exrprofile {
 
     void read_region(const std::string &filename, int y_start, int y_end, int width, std::atomic<int> &completed);
-    long multithreaded_read(const std::string & filename, int num_threads=1);
+    long multithreaded_read(const std::string & filename, int num_threads, ThreadPool &);
 
 }
