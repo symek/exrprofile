@@ -7,6 +7,32 @@
 
 namespace exrprofile {
 
+    std::vector<std::string> parse_file_list(const std::string& list_path) {
+    std::ifstream file(list_path);
+    std::vector<std::string> filenames;
+
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open file list: " + list_path);
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        // Trim whitespace
+        line.erase(line.begin(), std::find_if(line.begin(), line.end(), [](int ch) {
+            return !std::isspace(ch);
+        }));
+        line.erase(std::find_if(line.rbegin(), line.rend(), [](int ch) {
+            return !std::isspace(ch);
+        }).base(), line.end());
+
+        if (!line.empty()) {
+            filenames.push_back(std::move(line));
+        }
+    }
+
+    return filenames;
+}
+
 
     std::vector<Imf::Rgba> generate_synthetic_pixels(const int width, const int height) {
 
@@ -103,6 +129,7 @@ int main(int argc, char **argv) {
     auto prefix = std::string{"./test_"};
     bool mt_read = false;
     std::vector<std::string> files;
+    auto list = std::string{""};
 
     // Basic timing tools
     using clock = std::chrono::high_resolution_clock;
@@ -119,11 +146,18 @@ int main(int argc, char **argv) {
     app.add_flag("-v,--verbose", verbose, "Be more verbose");
     app.add_flag("-r,--read", mt_read, "Profile multi-thread reading");
     app.add_option("-f,--files", files, "Files to use for multi-thread reading")->expected(-1);
+    app.add_option("-l,--list", list, "Text file with test EXRs to proceed with (alternatively to -f)");
 
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &e) {
         return app.exit(e);
+    }
+
+    if(list != "") {
+        files = exrprofile::parse_file_list(list);
+        if (files.size() == 0)
+            return 1;
     }
 
 
