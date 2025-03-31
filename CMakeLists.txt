@@ -37,7 +37,7 @@ add_executable(exrprofile
         src/exrprofile.h
         src/mtread.cpp
         src/mtread.h
-        src/threadpool.h)
+        src/threadpool.h src/stats.h)
 
 # Links
 target_link_libraries(exrprofile PRIVATE OpenEXR::OpenEXR Imath::Imath)
@@ -45,7 +45,14 @@ target_link_libraries(exrprofile PRIVATE CLI11::CLI11 fmt::fmt)
 target_link_libraries(exrprofile PRIVATE Threads::Threads)
 
 # compiler flags
-target_compile_options(exrprofile PRIVATE
-    $<$<CONFIG:Release>:-Wall -Wextra -O3 -march=native>
-    $<$<CONFIG:Debug>:-Wall -Wextra -O0 -g>
-)
+if (MSVC)
+    target_compile_options(exrprofile PRIVATE
+            $<$<CONFIG:Release>:/W4 /O2 /permissive /DNDEBUG>
+            $<$<CONFIG:Debug>:/W4 /Od /Zi /permissive >
+            )
+else()
+    target_compile_options(exrprofile PRIVATE
+            $<$<CONFIG:Release>:-Wall -Wextra -O3 -march=native>
+            $<$<CONFIG:Debug>:-Wall -Wextra -O0 -g>
+            )
+endif()

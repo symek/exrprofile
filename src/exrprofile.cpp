@@ -3,6 +3,7 @@
 #include "exrprofile.h"
 #include "mtread.h"
 #include "threadpool.h"
+#include "stats.h"
 
 namespace exrprofile {
 
@@ -98,6 +99,7 @@ int main(int argc, char **argv) {
     int threads = 1;
     int workers = 1;
     bool cleanup = false;
+    bool verbose = false;
     auto prefix = std::string{"./test_"};
     bool mt_read = false;
     std::vector<std::string> files;
@@ -114,6 +116,7 @@ int main(int argc, char **argv) {
     app.add_option("-w,--workers", workers, "Number of thread workers (x threads) (default 1)");
     app.add_option("-s,--scale", scale, "Multiply of 1Kx1K test size (default 1)");
     app.add_flag("-c,--clean", cleanup, "Cleanup the files");
+    app.add_flag("-v,--verbose", verbose, "Be more verbose");
     app.add_flag("-r,--read", mt_read, "Profile multi-thread reading");
     app.add_option("-f,--files", files, "Files to use for multi-thread reading")->expected(-1);
 
@@ -159,9 +162,8 @@ int main(int argc, char **argv) {
 
         const auto read_time = timeit(start_reading);
 
-           fmt::print("Total time: {:.6f} seconds (avg. {} ms per frame)", (double)read_time / 1024, read_time / files.size());
 
-        {
+        if (verbose) {
             std::vector<std::pair<std::string, exrprofile::Stats>> sorted_results(results.begin(), results.end());
             using namespace exrprofile;
             std::cout << "\nSorted by Reading Time:\n";
@@ -173,9 +175,16 @@ int main(int argc, char **argv) {
             }
         }
 
+        auto readings= std::vector<long>();
+        for(const auto &[read, stat]: results) {
+            readings.push_back(stat[exrprofile::Records::decompression]);
+        }
+
+        std::cout << exrprofile::StatsSummary<long>::compute(readings, true);
+        fmt::print("Total time: {:.6f} seconds (avg. {} ms per frame)\n",
+                   (double)read_time / 1024, read_time / files.size());
         return 0; // NOTE: We quit here
     }
-
 
         const int width = std::clamp(scale, 1, 32) * 1024;
         const int height = width;
@@ -218,7 +227,7 @@ int main(int argc, char **argv) {
             fmt::print("{:>15}: {:.6f} seconds\n", "decompression", (double) decompression_time / 1024);
 
             // Store stats
-            results[compression_name] = {compression_time, decompression_time, (long) filesize};
+            results[compression_name] = {(long)compression_time, (long)decompression_time, (long) filesize};
 
             // Optionally cleanup our mess
             if (cleanup)
