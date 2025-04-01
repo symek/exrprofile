@@ -7,31 +7,66 @@
 
 namespace exrprofile {
 
-    std::vector<std::string> parse_file_list(const std::string& list_path) {
-    std::ifstream file(list_path);
-    std::vector<std::string> filenames;
+    void print_sorted_stats(const exrprofile::Results & results) {
+        // Convert map to vector of pairs for sorting FIXME: make stats container suitable for sorting
+        std::vector<std::pair<std::string, exrprofile::Stats>> sorted_results(results.begin(), results.end());
 
-    if (!file.is_open()) {
-        throw std::runtime_error("Could not open file list: " + list_path);
-    }
+        using namespace exrprofile;
+        std::cout << "\nSorted by Compression Time:\n";
+        std::sort(sorted_results.begin(), sorted_results.end(),
+                  [](const auto &a, const auto &b) {
+                      return a.second[Records::compression] < b.second[Records::compression];
+                  });
+        for (const auto &[name, stat]: sorted_results) {
+            fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[Records::compression],
+                       (double) stat[Records::filesize] / (1024 * 1024));
+        }
 
-    std::string line;
-    while (std::getline(file, line)) {
-        // Trim whitespace
-        line.erase(line.begin(), std::find_if(line.begin(), line.end(), [](int ch) {
-            return !std::isspace(ch);
-        }));
-        line.erase(std::find_if(line.rbegin(), line.rend(), [](int ch) {
-            return !std::isspace(ch);
-        }).base(), line.end());
+        std::cout << "\nSorted by Decompression Time:\n";
+        std::sort(sorted_results.begin(), sorted_results.end(),
+                  [](const auto &a, const auto &b) {
+                      return a.second[Records::decompression] < b.second[Records::decompression];
+                  });
+        for (const auto &[name, stat]: sorted_results) {
+            fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[Records::decompression],
+                       (double) stat[Records::filesize] / (1024 * 1024));
+        }
 
-        if (!line.empty()) {
-            filenames.push_back(std::move(line));
+        std::cout << "\nSorted by File Size:\n";
+        std::sort(sorted_results.begin(), sorted_results.end(),
+                  [](const auto &a, const auto &b) { return a.second[Records::filesize] < b.second[Records::filesize]; });
+        for (const auto &[name, stat]: sorted_results) {
+            fmt::print("{:>25}: {:.2f}MB -> {} ms \n", name, (double)
+                                                                     stat[Records::filesize] / (1024 * 1024),
+                       stat[Records::decompression]);
         }
     }
 
-    return filenames;
-}
+    std::vector<std::string> parse_file_list(const std::string &list_path) {
+        std::ifstream file(list_path);
+        std::vector<std::string> filenames;
+
+        if (!file.is_open()) {
+            throw std::runtime_error("Could not open file list: " + list_path);
+        }
+
+        std::string line;
+        while (std::getline(file, line)) {
+            // Trim whitespace
+            line.erase(line.begin(), std::find_if(line.begin(), line.end(), [](int ch) {
+                return !std::isspace(ch);
+            }));
+            line.erase(std::find_if(line.rbegin(), line.rend(), [](int ch) {
+                return !std::isspace(ch);
+            }).base(), line.end());
+
+            if (!line.empty()) {
+                filenames.push_back(std::move(line));
+            }
+        }
+
+        return filenames;
+    }
 
 
     std::vector<Imf::Rgba> generate_synthetic_pixels(const int width, const int height) {
@@ -154,7 +189,7 @@ int main(int argc, char **argv) {
         return app.exit(e);
     }
 
-    if(list != "") {
+    if (list != "") {
         files = exrprofile::parse_file_list(list);
         if (files.size() == 0)
             return 1;
@@ -162,13 +197,14 @@ int main(int argc, char **argv) {
 
 
     if (mt_read) {
-        fmt::print("=== Profiling read from a file with {} threads per frame, and {} worker frames \n", threads, workers);
+        fmt::print("=== Profiling read from a file with {} threads per frame, and {} worker frames \n", threads,
+                   workers);
         auto results = exrprofile::Results{};
         std::vector<std::thread> frame_threads;
 
-         for (const auto &filename: files) {
-             const std::uintmax_t filesize = std::filesystem::file_size(filename);
-             results[filename] = {0, 0, (long)filesize};
+        for (const auto &filename: files) {
+            const std::uintmax_t filesize = std::filesystem::file_size(filename);
+            results[filename] = {0, 0, (long) filesize};
         }
 
         std::atomic<size_t> frame_index{0};
@@ -178,7 +214,7 @@ int main(int argc, char **argv) {
                 using namespace exrprofile;
                 const size_t frame = frame_index.fetch_add(1);
                 if (frame >= files.size()) break;
-                const auto & filename = files[frame];
+                const auto &filename = files[frame];
                 const auto result = multithreaded_read(filename, threads, pool);
                 results[filename][Records::decompression] = result;
             }
@@ -202,113 +238,80 @@ int main(int argc, char **argv) {
             using namespace exrprofile;
             std::cout << "\nSorted by Reading Time:\n";
             std::sort(sorted_results.begin(), sorted_results.end(),
-                      [](const auto &a, const auto &b) { return a.second[Records::decompression] < b.second[Records::decompression]; });
+                      [](const auto &a, const auto &b) {
+                          return a.second[Records::decompression] < b.second[Records::decompression];
+                      });
             for (const auto &[name, stat]: sorted_results) {
                 fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[Records::decompression],
                            (double) stat[Records::filesize] / (1024 * 1024));
             }
         }
 
-        auto readings= std::vector<long>();
-        for(const auto &[read, stat]: results) {
+        auto readings = std::vector<long>();
+        for (const auto &[read, stat]: results) {
             readings.push_back(stat[exrprofile::Records::decompression]);
         }
 
         std::cout << exrprofile::StatsSummary<long>::compute(readings, true);
         fmt::print("Total time: {:.6f} seconds (avg. {} ms per frame)\n",
-                   (double)read_time / 1024, read_time / files.size());
+                   (double) read_time / 1024, read_time / files.size());
         return 0; // NOTE: We quit here
     }
 
-        const int width = std::clamp(scale, 1, 32) * 1024;
-        const int height = width;
+    const int width = std::clamp(scale, 1, 32) * 1024;
+    const int height = width;
 
-        // Generate random channel data
-        fmt::print("=== Generating random data: {}x{} with {} ===\n", width , height, threads);
+    // Generate random channel data
+    fmt::print("=== Generating random data: {}x{} with {} ===\n", width, height, threads);
 
-        auto compression_list = std::vector<int>(Imf::Compression::NUM_COMPRESSION_METHODS);
-        std::iota(compression_list.begin(), compression_list.end(), 0);
-        auto compression_name = std::string{};
-
-
-        auto results = exrprofile::Results{};
-        const auto start_gen = clock::now();
-        const std::vector<Imf::Rgba> pixels = exrprofile::generate_synthetic_pixels(width, height);
-        const auto end_gen = timeit(start_gen);
-        fmt::print("{:>15}: {:.6f} seconds\n", "making pixels", (double)end_gen/1024);
-
-        std::cout << "=== Profiling compressions" << " ===" << std::endl;
-        for (const auto compression: compression_list) {
-
-            getCompressionNameFromId(static_cast<Imf::Compression>(compression), compression_name);
-            const auto filename = prefix + compression_name + std::string{".exr"};
-            auto compression_description = std::string{};
-            getCompressionDescriptionFromId(static_cast<Imf::Compression>(compression), compression_description);
-
-            // Measure compression time
-            const auto start_compress = clock::now();
-            exrprofile::save_exr_file(pixels, filename, width, height, static_cast<Imf::Compression>(compression), threads);
-            const auto compression_time = timeit(start_compress);
-
-            const std::uintmax_t filesize = std::filesystem::file_size(filename);
-            fmt::print("{} -> {}\n", filename,compression_description );
-            fmt::print("{:>15}: {:.6f} seconds\n", "compression", (double) compression_time / 1024);
-
-            // Measure decompression time
-            const auto start_decompress =clock::now();
-            exrprofile::load_exr_file(filename);
-            const auto decompression_time = timeit(start_decompress);
-            fmt::print("{:>15}: {:.6f} seconds\n", "decompression", (double) decompression_time / 1024);
-
-            // Store stats
-            results[compression_name] = {(long)compression_time, (long)decompression_time, (long) filesize};
-
-            // Optionally cleanup our mess
-            if (cleanup)
-                exrprofile::delete_test_file(filename);
-
-        }
-
-        // Convert map to vector of pairs for sorting
-        std::vector<std::pair<std::string, exrprofile::Stats>> sorted_results(results.begin(), results.end());
+    auto compression_list = std::vector<int>(Imf::Compression::NUM_COMPRESSION_METHODS);
+    std::iota(compression_list.begin(), compression_list.end(), 0);
+    auto compression_name = std::string{};
 
 
-        {
-            using namespace exrprofile;
-            std::cout << "\nSorted by Compression Time:\n";
-            std::sort(sorted_results.begin(), sorted_results.end(),
-                      [](const auto &a, const auto &b) { return a.second[Records::compression] < b.second[Records::compression]; });
-            for (const auto &[name, stat]: sorted_results) {
-                fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[Records::compression],
-                           (double) stat[Records::filesize] / (1024 * 1024));
-            }
-        }
+    auto results = exrprofile::Results{};
+    const auto start_gen = clock::now();
+    const std::vector<Imf::Rgba> pixels = exrprofile::generate_synthetic_pixels(width, height);
+    const auto end_gen = timeit(start_gen);
+    fmt::print("{:>15}: {:.6f} seconds\n", "making pixels", (double) end_gen / 1024);
 
+    std::cout << "=== Profiling compressions" << " ===" << std::endl;
+    for (const auto compression: compression_list) {
 
-        {
-            using namespace exrprofile;
-            std::cout << "\nSorted by Decompression Time:\n";
-            std::sort(sorted_results.begin(), sorted_results.end(),
-                      [](const auto &a, const auto &b) { return a.second[Records::decompression] < b.second[Records::decompression]; });
-            for (const auto &[name, stat]: sorted_results) {
-                fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[Records::decompression],
-                           (double) stat[Records::filesize] / (1024 * 1024));
-            }
-        }
+        getCompressionNameFromId(static_cast<Imf::Compression>(compression), compression_name);
+        const auto filename = prefix + compression_name + std::string{".exr"};
+        auto compression_description = std::string{};
+        getCompressionDescriptionFromId(static_cast<Imf::Compression>(compression), compression_description);
 
+        // Measure compression time
+        const auto start_compress = clock::now();
+        exrprofile::save_exr_file(pixels, filename, width, height, static_cast<Imf::Compression>(compression), threads);
+        const auto compression_time = timeit(start_compress);
 
-        {
-            using namespace exrprofile;
-            std::cout << "\nSorted by File Size:\n";
-            std::sort(sorted_results.begin(), sorted_results.end(),
-                      [](const auto &a, const auto &b) { return a.second[Records::filesize] < b.second[Records::filesize]; });
-            for (const auto &[name, stat]: sorted_results) {
-                fmt::print("{:>25}: {:.2f}MB -> {} ms \n", name, (double)
-                stat[Records::filesize] / (1024 * 1024), stat[Records::decompression]);
-            }
-        }
+        const std::uintmax_t filesize = std::filesystem::file_size(filename);
+        fmt::print("{} -> {}\n", filename, compression_description);
+        fmt::print("{:>15}: {:.6f} seconds\n", "compression", (double) compression_time / 1024);
 
+        // Measure decompression time
+        const auto start_decompress = clock::now();
+        exrprofile::load_exr_file(filename);
+        const auto decompression_time = timeit(start_decompress);
+        fmt::print("{:>15}: {:.6f} seconds\n", "decompression", (double) decompression_time / 1024);
 
-        return 0;
+        // Store stats
+        results[compression_name] = {(long) compression_time, (long) decompression_time, (long) filesize};
+
+        // Optionally cleanup our mess
+        if (cleanup)
+            exrprofile::delete_test_file(filename);
+
     }
+
+    exrprofile::print_sorted_stats(results);
+
+    return 0;
+}
+
+
+
 
