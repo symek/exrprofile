@@ -19,7 +19,7 @@
 
 namespace exrprofile {
 
-    void read_region(const std::string &filename, int y_start, int y_end, int width, std::atomic<int> &completed);
+    void read_region(Imf::RgbaInputFile &, int y_start, int y_end, int width, std::atomic<int> &completed);
     long multithreaded_read(const std::string & filename, int num_threads, ThreadPool &);
 
 }

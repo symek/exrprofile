@@ -7,9 +7,9 @@
 
 namespace exrprofile {
 
-    void read_region(const std::string &filename, int y_start, int y_end, int width, std::atomic<int> &completed) {
+    void read_region(Imf::RgbaInputFile &file, int y_start, int y_end, int width, std::atomic<int> &completed) {
         try {
-            Imf::RgbaInputFile file(filename.c_str());
+//            Imf::RgbaInputFile file(filename.c_str());
             Imath::Box2i dw = file.dataWindow();
             int height = dw.max.y - dw.min.y + 1;
 
@@ -56,7 +56,7 @@ namespace exrprofile {
                 int y_end = (i == num_threads - 1) ? dw.max.y : y_start + chunk_size - 1;
 //                pool.enqueue() this should be here, but needs work.
                 threads.emplace_back([&, y_start, y_end]() {
-                    read_region(std::ref(filename), y_start, y_end, width, std::ref(completed));
+                    read_region(std::ref(file), y_start, y_end, width, std::ref(completed));
                 });
 
 
