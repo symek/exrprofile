@@ -34,7 +34,6 @@ namespace exrprofile {
                             task = std::move(tasks.front());
                             tasks.pop();
                         }
-
                         task(); // run the task
                     }
                 });
@@ -61,10 +60,15 @@ namespace exrprofile {
             condition.notify_one();
         }
 
+        bool has_work()  {
+            std::scoped_lock lock(queue_mutex);
+            return not tasks.empty();
+        }
+
+
     private:
         std::vector<std::thread> workers;
         std::queue<std::function<void()>> tasks;
-
         std::mutex queue_mutex;
         std::condition_variable condition;
         std::atomic<bool> stop_flag;
