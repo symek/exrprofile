@@ -163,6 +163,7 @@ int main(int argc, char **argv) {
     bool verbose = false;
     auto prefix = std::string{"./test_"};
     bool mt_read = false;
+    bool mt_pool = false;
     std::vector<std::string> files;
     auto list = std::string{""};
 
@@ -180,6 +181,7 @@ int main(int argc, char **argv) {
     app.add_flag("-c,--clean", cleanup, "Cleanup the files");
     app.add_flag("-v,--verbose", verbose, "Be more verbose");
     app.add_flag("-r,--read", mt_read, "Profile multi-thread reading");
+    app.add_flag("-R,--Read", mt_pool, "Same as -r but with different scheduling (-r to be removed)");
     app.add_option("-f,--files", files, "Files to use for multi-thread reading")->expected(-1);
     app.add_option("-l,--list", list, "Text file with test EXRs to proceed with (alternatively to -f)");
 
@@ -194,6 +196,86 @@ int main(int argc, char **argv) {
         if (files.size() == 0)
             return 1;
     }
+
+    if (mt_pool ){
+        auto tmapp = std::set<std::thread::id>();
+        std::mutex queue_mutex;
+        using namespace std::chrono_literals;
+        std::atomic<size_t> frame_index{0};
+        std::atomic<size_t> complited_tasks{0};
+
+        auto results = exrprofile::Results{};
+        auto frame_worker = [&]() {
+            while (true) {
+                using namespace exrprofile;
+                auto pool = exrprofile::ThreadPool(threads);
+                const size_t frame = frame_index.fetch_add(1);
+                if (frame >= files.size()) break;
+                const auto &filename = files[frame];
+                const auto result = multithreaded_read(filename, 1, pool);
+                {
+                    std::unique_lock<std::mutex> lock(queue_mutex);
+                    results[filename][Records::decompression] = result;
+                    tmapp.insert(std::this_thread::get_id());
+                    complited_tasks.fetch_add(1);
+                }
+                std::ostringstream oss;
+                oss << std::this_thread::get_id();
+                fmt::print("Thread {} working on {} (map size:{})\n", oss.str(), filename, tmapp.size());
+//                std::this_thread::sleep_for(1000ms);
+            }
+        };
+        const auto elements = std::vector<int>(workers);
+        auto pool = exrprofile::ThreadPool(workers);
+        for (auto & ele: elements) {
+            pool.enqueue(frame_worker);
+        }
+
+        std::cout << "Sleeping " << std::flush;
+        while(pool.has_work()) {
+            std::this_thread::sleep_for(1000ms);
+            std::cout << " . " << std::flush;
+        }
+        std::cout << " and queue was emptied" << std::endl;
+
+        while(complited_tasks != files.size()) {
+            std::this_thread::sleep_for(100ms);
+        }
+
+        std::cout << ": All tasks were finished now" << std::endl;
+
+        for (const auto & thread: tmapp) {
+            std::cout << "This was: " << thread << '\n';
+        }
+
+        auto readings = std::vector<long>();
+        for (const auto &[read, stat]: results) {
+            readings.push_back(stat[exrprofile::Records::decompression]);
+        }
+
+        std::cout << exrprofile::StatsSummary<long>::compute(readings, true);
+
+        {
+            std::vector<std::pair<std::string, exrprofile::Stats>> sorted_results(results.begin(), results.end());
+            using namespace exrprofile;
+            std::cout << "\nSorted by Reading Time:\n";
+            std::sort(sorted_results.begin(), sorted_results.end(),
+                      [](const auto &a, const auto &b) {
+                          return a.second[Records::decompression] < b.second[Records::decompression];
+                      });
+            for (const auto &[name, stat]: sorted_results) {
+                fmt::print("{:>25}: {} ms -> size: {:.2f}MB \n", name, stat[Records::decompression],
+                           (double) stat[Records::filesize] / (1024 * 1024));
+            }
+        }
+
+        return 0;
+    }
+
+
+
+
+
 
 
     if (mt_read) {

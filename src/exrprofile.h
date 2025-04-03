@@ -18,6 +18,7 @@
 #include <thread>
 #include <fstream>
 #include <fmt/core.h>
+#include <fmt/ostream.h>
 
 
 namespace exrprofile {
